@@ -30,6 +30,9 @@
 #include <Arduino.h>
 #include "trinamic.h"
 #include "../Marlin/src/module/configuration_store.h"
+#include "ff.h"
+#include <sys/iosupport.h>
+#include "diskio.h"
 
 #ifdef NEW_FANCTL
     #include "fanctl.h"
@@ -87,6 +90,12 @@ void app_idle(void) {
 
 void app_setup_marlin_logging();
 
+typedef struct {
+    FIL fil;
+    WORD flags;
+} FIL_EX;
+
+BYTE bbb[10240];
 void app_run(void) {
     app_setup_marlin_logging();
 
@@ -104,13 +113,28 @@ void app_run(void) {
     app_setup();
 
     marlin_server_start_processing();
-
+    
     log_info(Marlin, "Setup complete");
 
     if (eeprom_init() == EEPROM_INIT_Defaults && marlin_server_processing()) {
         settings.reset();
     }
-
+    
+    // prosty dump ccram
+    FILE *velkejFajl = fopen("/usb/velkejFajl.bin", "w");
+    uint32_t i = 100000;
+    size_t blk_size = 10240;
+    blk_size = blk_size - (blk_size % 512);
+    __handle *handle = __get_handle(fileno(velkejFajl));
+    FIL_EX *f = (FIL_EX *)handle->fileStruct;
+    if (FR_OK != f_expand(&(f->fil), (i - 1) * blk_size, 1)) {
+        fclose(velkejFajl);
+        velkejFajl = nullptr;
+        Sound_Play(ButtonEcho);
+    }
+    DWORD data_sector = (f->fil.obj.sclust - 2) * f->fil.obj.fs->csize + f->fil.obj.fs->database;
+    memset(bbb, '@', 10240);
+    log_info(Marlin, "Dovnitr");
     while (1) {
         if (marlin_server_processing()) {
             loop();
@@ -119,6 +143,20 @@ void app_run(void) {
         uartslave_cycle(&uart6slave);
 #endif
         marlin_server_loop();
+        if(velkejFajl && --i){
+            //log_info(Marlin, "Writing %u (%u)...", i, blk_size);
+            size_t written = disk_write(0, bbb, data_sector, blk_size/512);
+            //log_info(Marlin, "... %u done.", i);
+            if(written != 0 ){
+                Sound_Play(ButtonEcho);
+            }
+            data_sector += blk_size/512;
+        } else if(velkejFajl){
+            fclose(velkejFajl);
+            velkejFajl = nullptr;
+            log_info(Marlin, "Ven");
+            break;
+        }
     }
 }
 
