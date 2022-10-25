@@ -27,4 +27,5 @@ void M1600(); /// Menu change filament. Prusa STM32 platform specific
 void M1700(); /// Preheat. Prusa STM32 platform specific
 void M1701(); /// Autoload. Prusa STM32 platform specific
 
+void M1492();
 }

@@ -106,4 +106,7 @@ enum class EspLinkState {
 };
 
 EspLinkState esp_link_state();
+
+void esp_start_softap(uint8_t channel);
+
 #endif

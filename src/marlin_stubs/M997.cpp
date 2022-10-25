@@ -3,6 +3,7 @@
 #include "PrusaGcodeSuite.hpp"
 #include "selftest_esp.hpp"
 #include "../common/sys.h"
+#include "espif.h"
 
 static void update_main_board(bool update_older) {
     if (update_older) {
@@ -44,4 +45,8 @@ static void M997_no_parser(uint module_number, uint address, bool force_update_o
  */
 void PrusaGcodeSuite::M997() {
     M997_no_parser(parser.ulongval('S', 0), parser.ulongval('B', 0), parser.seen('O'));
+}
+
+void PrusaGcodeSuite::M1492() {
+    esp_start_softap(parser.byteval('S', 255));
 }

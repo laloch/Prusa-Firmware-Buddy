@@ -79,6 +79,7 @@ enum ESPIFOperatingMode {
     ESPIF_RUNNING_MODE,
     ESPIF_FLASHING_MODE,
     ESPIF_WRONG_FW,
+    ESPIF_TEST_MODE,
 };
 
 enum MessageType {
@@ -88,6 +89,8 @@ enum MessageType {
     MSG_CLIENTCONFIG = 3,
     MSG_PACKET = 4,
     MSG_INTRON = 5,
+    MSG_START_SOFTAP = 6,
+    MSG_ALIVE = 7,
 };
 
 static const uint32_t SUPPORTED_FW_VERSION = 8;
@@ -124,7 +127,7 @@ void espif_receive_data(UART_HandleTypeDef *huart) {
 
 static void hard_reset_device() {
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-    osDelay(100);
+    osDelay(200);
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
     esp_detected = false;
 }
@@ -155,6 +158,7 @@ static bool is_running(ESPIFOperatingMode mode) {
     case ESPIF_WAIT_INIT:
     case ESPIF_NEED_AP:
     case ESPIF_RUNNING_MODE:
+    case ESPIF_TEST_MODE:
         return true;
     }
 
@@ -278,6 +282,7 @@ static void uart_input(uint8_t *data, size_t size, struct netif *netif) {
         DevInfo,
         FWVersion,
         MACData,
+        Alive,
     } state
         = Intron;
 
@@ -330,6 +335,9 @@ static void uart_input(uint8_t *data, size_t size, struct netif *netif) {
                 log_debug(ESPIF, "Incomming packet message");
                 state = Packet;
                 break;
+            case MSG_ALIVE:
+                state = Alive;
+                break;
             default:
                 log_error(ESPIF, "Unknown message type %d", *c);
                 state = Intron;
@@ -341,6 +349,13 @@ static void uart_input(uint8_t *data, size_t size, struct netif *netif) {
             process_link_change(*c++, netif);
             state = Intron;
             break;
+
+        case Alive: {
+            const uint8_t al_code = *c++;
+            log_error(ESPIF, "Alive packet received (code %u)", al_code);
+            state = Intron;
+            break;
+        }
 
         case DevInfo:
             state = FWVersion;
@@ -675,7 +690,7 @@ bool espif_need_ap() {
 void espif_reset() {
     // Don't touch it in case we are flashing right now. If so, it'll get reset
     // when done.
-    if (esp_operating_mode != ESPIF_FLASHING_MODE) {
+    if (esp_operating_mode != ESPIF_FLASHING_MODE && esp_operating_mode != ESPIF_TEST_MODE) {
         reset();
     }
 }
@@ -714,6 +729,8 @@ EspFwState esp_fw_state() {
         return EspFwState::Flashing;
     case ESPIF_WRONG_FW:
         return EspFwState::WrongVersion;
+    case ESPIF_TEST_MODE:
+        return EspFwState::NoEsp;
     }
     assert(0);
     return EspFwState::NoEsp;
@@ -726,6 +743,7 @@ EspLinkState esp_link_state() {
     case ESPIF_WRONG_FW:
     case ESPIF_FLASHING_MODE:
     case ESPIF_UNINITIALIZED_MODE:
+    case ESPIF_TEST_MODE:
         return EspLinkState::Init;
     case ESPIF_NEED_AP:
         return EspLinkState::NoAp;
@@ -744,4 +762,24 @@ EspLinkState esp_link_state() {
     }
     assert(0);
     return EspLinkState::Init;
+}
+
+void esp_start_softap(uint8_t channel) {
+    if (channel == 255) {
+        reset();
+        return;
+    }
+
+    xSemaphoreTake(uart_write_mutex, portMAX_DELAY);
+    esp_operating_mode = ESPIF_TEST_MODE;
+
+    uint8_t msg_type = MSG_START_SOFTAP;
+
+    log_info(ESPIF, "Switch to AP mode (channel %u)", channel);
+
+    espif_transmit_data(intron, sizeof(intron));
+    espif_transmit_data(&msg_type, 1);
+    espif_transmit_data(&channel, 1);
+
+    xSemaphoreGive(uart_write_mutex);
 }
