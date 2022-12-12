@@ -70,6 +70,9 @@ EndBSPDependencies */
 /** @defgroup USBH_MSC_CORE_Private_Defines
   * @{
   */
+
+#define MAX_RDWR_RETRIES 1U
+
 /**
   * @}
   */
@@ -760,6 +763,8 @@ USBH_StatusTypeDef USBH_MSC_Read(USBH_HandleTypeDef *phost,
                                  uint32_t length)
 {
   uint32_t timeout;
+  uint8_t retry_count = 0;
+
   MSC_HandleTypeDef *MSC_Handle = (MSC_HandleTypeDef *) phost->pActiveClass->pData;
 
   if ((phost->device.is_connected == 0U) ||
@@ -776,13 +781,37 @@ USBH_StatusTypeDef USBH_MSC_Read(USBH_HandleTypeDef *phost,
   USBH_MSC_SCSI_Read(phost, lun, address, pbuf, length);
 
   timeout = phost->Timer;
-
   while (USBH_MSC_RdWrProcess(phost, lun) == USBH_BUSY)
   {
-    if (((phost->Timer - timeout) > (10000U * length)) || (phost->device.is_connected == 0U))
+    if (phost->device.is_connected == 0U)
     {
       MSC_Handle->state = MSC_IDLE;
       return USBH_FAIL;
+    }
+    else if ((phost->Timer - timeout) > (10000U * length))
+    {
+      if (retry_count++ < MAX_RDWR_RETRIES)
+      {
+        USBH_ReEnumerate(phost);
+        USBH_Delay(300U);
+        timeout = phost->Timer;
+        while (!phost->device.is_connected)
+        {
+          USBH_Delay(10U);
+          if ((phost->Timer - timeout) > 1000U)
+          {
+            MSC_Handle->state = MSC_IDLE;
+            return USBH_FAIL;
+          }
+        }
+        USBH_MSC_SCSI_Read(phost, lun, address, pbuf, length);
+        timeout = phost->Timer;
+      }
+      else
+      {
+        MSC_Handle->state = MSC_IDLE;
+        return USBH_FAIL;
+      }
     }
   }
   MSC_Handle->state = MSC_IDLE;
@@ -807,6 +836,7 @@ USBH_StatusTypeDef USBH_MSC_Write(USBH_HandleTypeDef *phost,
                                   uint32_t length)
 {
   uint32_t timeout;
+  uint8_t retry_count = 0;
 
   MSC_HandleTypeDef *MSC_Handle = (MSC_HandleTypeDef *) phost->pActiveClass->pData;
 
@@ -826,10 +856,35 @@ USBH_StatusTypeDef USBH_MSC_Write(USBH_HandleTypeDef *phost,
   timeout = phost->Timer;
   while (USBH_MSC_RdWrProcess(phost, lun) == USBH_BUSY)
   {
-    if (((phost->Timer - timeout) > (10000U * length)) || (phost->device.is_connected == 0U))
+    if (phost->device.is_connected == 0U)
     {
       MSC_Handle->state = MSC_IDLE;
       return USBH_FAIL;
+    }
+    else if ((phost->Timer - timeout) > (10000U * length))
+    {
+      if (retry_count++ < MAX_RDWR_RETRIES)
+      {
+        USBH_ReEnumerate(phost);
+        USBH_Delay(300U);
+        timeout = phost->Timer;
+        while (!phost->device.is_connected)
+        {
+          USBH_Delay(10U);
+          if ((phost->Timer - timeout) > 1000U)
+          {
+            MSC_Handle->state = MSC_IDLE;
+            return USBH_FAIL;
+          }
+        }
+        USBH_MSC_SCSI_Write(phost, lun, address, pbuf, length);
+        timeout = phost->Timer;
+      }
+      else
+      {
+        MSC_Handle->state = MSC_IDLE;
+        return USBH_FAIL;
+      }
     }
   }
   MSC_Handle->state = MSC_IDLE;
