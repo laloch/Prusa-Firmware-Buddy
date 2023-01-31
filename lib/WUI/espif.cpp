@@ -90,7 +90,7 @@ enum MessageType {
     MSG_INTRON = 5,
 };
 
-static const uint32_t SUPPORTED_FW_VERSION = 8;
+static const uint32_t SUPPORTED_FW_VERSION = 9;
 
 // NIC state
 static std::atomic<uint16_t> fw_version;
@@ -103,7 +103,7 @@ static std::atomic<uint8_t> init_countdown = 20;
 static std::atomic<bool> seen_intron = false;
 
 // UART
-static const uint32_t NIC_UART_BAUDRATE = 4600000;
+static const uint32_t NIC_UART_BAUDRATE = 40 * 115200;
 static const uint32_t FLASH_UART_BAUDRATE = 115200;
 static const uint32_t CHARACTER_TIMEOUT_MS = 10;
 static std::atomic<bool> esp_detected;
@@ -312,6 +312,7 @@ static void uart_input(uint8_t *data, size_t size, struct netif *netif) {
                 }
             } else {
                 intron_read = 0;
+                log_error(ESPIF, "UART error: garbage input");
             }
 
             break;

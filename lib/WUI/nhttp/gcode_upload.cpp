@@ -192,6 +192,7 @@ UploadHooks::Result GcodeUpload::data(std::string_view data) {
     assert(tmp_upload_file);
     for (;;) {
         const size_t written = fwrite(data.begin(), 1, data.size(), tmp_upload_file.get());
+#if 1
         if (written < data.size()) {
             if (errno == EAGAIN) {
                 continue;
@@ -201,6 +202,10 @@ UploadHooks::Result GcodeUpload::data(std::string_view data) {
         } else {
             return make_tuple(Status::Ok, nullptr);
         }
+#else
+        (void)written;
+        return make_tuple(Status::Ok, nullptr);
+#endif
     }
 }
 

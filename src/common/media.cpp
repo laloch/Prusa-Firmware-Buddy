@@ -88,7 +88,7 @@ media_state_t media_get_state(void) {
 // These buffers are HUGE. We need to rework the prefetcher logic
 // to be more efficient and add compression.
 #define FILE_BUFF_SIZE 5120
-static char prefetch_buff[2][FILE_BUFF_SIZE];
+static char __attribute__((section(".ccmram"))) prefetch_buff[2][FILE_BUFF_SIZE];
 static char *file_buff;
 static uint32_t file_buff_level;
 static uint32_t file_buff_pos;
